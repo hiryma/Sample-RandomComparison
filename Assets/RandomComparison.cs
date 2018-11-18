@@ -193,42 +193,39 @@ public class RandomComparison : MonoBehaviour
 		CopyToTexture();
 	}
 
+	public void OnTypeButonClick()
+	{
+		Clear();
+		// タイプ変更
+		switch (_randomType)
+		{
+			case RandomType.XorShift: _randomType = RandomType.Mwc; break;
+			case RandomType.Mwc: _randomType = RandomType.Standard; break;
+			case RandomType.Standard: _randomType = RandomType.BadLcg; break;
+			case RandomType.BadLcg: _randomType = RandomType.PopularLcg; break;
+			case RandomType.PopularLcg: _randomType = RandomType.XorShift; break;
+		}
+		_randomTypeText.text = _randomType.ToString();
+	}
+
 	void Update()
 	{
-		// クリア
-		if (Input.anyKeyDown)
+		// キック
+		for (int i = 0; i < ThreadCount; i++)
 		{
-			Clear();
-			// タイプ変更
-			switch (_randomType)
-			{
-				case RandomType.XorShift: _randomType = RandomType.Mwc; break;
-				case RandomType.Mwc: _randomType = RandomType.Standard; break;
-				case RandomType.Standard: _randomType = RandomType.BadLcg; break;
-				case RandomType.BadLcg: _randomType = RandomType.PopularLcg; break;
-				case RandomType.PopularLcg: _randomType = RandomType.XorShift; break;
-			}
-			_randomTypeText.text = _randomType.ToString();
+			_jobStartSemaphore.Release();
 		}
-		else
+		// 終了待ち
+		for (int i = 0; i < ThreadCount; i++)
 		{
-			// キック
-			for (int i = 0; i < ThreadCount; i++)
+			if (!_jobEndSemaphore.WaitOne(1000))
 			{
-				_jobStartSemaphore.Release();
+				Debug.Assert(false, "Semaphoreがタイムアウト!!同期にバグあるよ!!");
+				break;
 			}
-			// 終了待ち
-			for (int i = 0; i < ThreadCount; i++)
-			{
-				if (!_jobEndSemaphore.WaitOne(1000))
-				{
-					Debug.Assert(false, "Semaphoreがタイムアウト!!同期にバグあるよ!!");
-					break;
-				}
-			}
-			// ピクセル充填
-			CopyToTexture();
 		}
+		// ピクセル充填
+		CopyToTexture();
 	}
 
 	void CopyToTexture()
