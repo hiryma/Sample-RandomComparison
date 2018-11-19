@@ -21,9 +21,11 @@ public class RandomComparison : MonoBehaviour
 	enum RandomType
 	{
 		None,
+		XorShift32,
+		XorShift64,
 		XorShift128,
-		XorShift,
-		Mwc,
+		Mwc32,
+		Mwc64,
 		Standard,
 		BadLcg,
 		PopularLcg,
@@ -77,7 +79,7 @@ public class RandomComparison : MonoBehaviour
 		_counts[2] = new double[4];
 		_counts[3] = new double[8];
 		_counts[4] = new double[16];
-		SetRandomType(RandomType.XorShift128);
+		SetRandomType(RandomType.XorShift32);
 		for (int i = 0; i < ThreadCount; i++)
 		{
 			_pixels[i] = new Color32[Width * Height / ThreadCount];
@@ -337,9 +339,11 @@ public class RandomComparison : MonoBehaviour
 		RandomType next = RandomType.None;
 		switch (_randomType)
 		{
-			case RandomType.XorShift128: next = RandomType.XorShift; break;
-			case RandomType.XorShift: next = RandomType.Mwc; break;
-			case RandomType.Mwc: next = RandomType.Standard; break;
+			case RandomType.XorShift128: next = RandomType.XorShift64; break;
+			case RandomType.XorShift64: next = RandomType.XorShift32; break;
+			case RandomType.XorShift32: next = RandomType.Mwc32; break;
+			case RandomType.Mwc32: next = RandomType.Mwc64; break;
+			case RandomType.Mwc64: next = RandomType.Standard; break;
 			case RandomType.Standard: next = RandomType.BadLcg; break;
 			case RandomType.BadLcg: next = RandomType.PopularLcg; break;
 			case RandomType.PopularLcg: next = RandomType.XorShift128; break;
@@ -360,8 +364,10 @@ public class RandomComparison : MonoBehaviour
 			switch (_randomType)
 			{
 				case RandomType.XorShift128: _randoms[i] = new XorShift128(i); break;
-				case RandomType.XorShift: _randoms[i] = new XorShift(i); break;
-				case RandomType.Mwc: _randoms[i] = new Mwc(i); break;
+				case RandomType.XorShift64: _randoms[i] = new XorShift64(i); break;
+				case RandomType.XorShift32: _randoms[i] = new XorShift32(i); break;
+				case RandomType.Mwc32: _randoms[i] = new Mwc32(i); break;
+				case RandomType.Mwc64: _randoms[i] = new Mwc64(i); break;
 				case RandomType.Standard: _randoms[i] = new Standard(i); break;
 				case RandomType.BadLcg: _randoms[i] = new BadLcg(i); break;
 				case RandomType.PopularLcg: _randoms[i] = new PopularLcg(i); break;
@@ -433,7 +439,7 @@ public class RandomComparison : MonoBehaviour
 
 	interface IRandom
 	{
-		int Next(); // 16bitの乱数を返す
+		int Next(); // 16bitの乱数を返す(実用ではそんなに削る必要はないが、今回は合わせておいた)
 	}
 
 	class XorShift128 : IRandom //https://en.wikipedia.org/wiki/Xorshift
@@ -460,10 +466,26 @@ public class RandomComparison : MonoBehaviour
 		}
 	}
 
-	class XorShift : IRandom
+	class XorShift64 : IRandom
+	{
+		ulong _x;
+		public XorShift64(int seed)
+		{
+			_x = 0xffff0000 | (uint)(seed & 0xffff);
+		}
+		public int Next() // numerical recipes
+		{
+			_x ^= _x << 21;
+			_x ^= _x >> 35;
+			_x ^= _x << 4;
+			return (int)(_x & 0xffff);
+		}
+	}
+
+	class XorShift32 : IRandom
 	{
 		uint _x;
-		public XorShift(int seed)
+		public XorShift32(int seed)
 		{
 			_x = 0xffff0000 | (uint)(seed & 0xffff);
 		}
@@ -476,16 +498,30 @@ public class RandomComparison : MonoBehaviour
 		}
 	}
 
-	class Mwc : IRandom
+	class Mwc32 : IRandom
 	{
 		uint _x;
-		public Mwc(int seed)
+		public Mwc32(int seed)
 		{
 			_x = 0xffff0000 | (uint)(seed & 0xffff);
 		}
 		public int Next()
 		{
 			_x = ((_x & 0xffff) * 62904) + (_x >> 16); // Numerical Recipes.
+			return (int)(_x & 0xffff);
+		}
+	}
+
+	class Mwc64 : IRandom
+	{
+		ulong _x;
+		public Mwc64(int seed)
+		{
+			_x = 0xffff0000 | (uint)(seed & 0xffff);
+		}
+		public int Next()
+		{
+			_x = ((_x & 0xffffffff) * 4294957665) + (_x >> 32); // Numerical Recipes.
 			return (int)(_x & 0xffff);
 		}
 	}
@@ -534,13 +570,19 @@ public class RandomComparison : MonoBehaviour
 
 	void Benchmark()
 	{
+		SetRandomType(RandomType.XorShift32);
+		BenchmarkSub();
+
+		SetRandomType(RandomType.XorShift64);
+		BenchmarkSub();
+
 		SetRandomType(RandomType.XorShift128);
 		BenchmarkSub();
 
-		SetRandomType(RandomType.XorShift);
+		SetRandomType(RandomType.Mwc32);
 		BenchmarkSub();
 
-		SetRandomType(RandomType.Mwc);
+		SetRandomType(RandomType.Mwc64);
 		BenchmarkSub();
 
 		SetRandomType(RandomType.Standard);
