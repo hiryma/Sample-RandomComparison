@@ -11,8 +11,6 @@ public class RandomComparison : MonoBehaviour
 	Text _randomTypeText;
 	[SerializeField]
 	Text _testTypeText;
-	[SerializeField]
-	float _collisionTestDiffScale;
 
 	Texture2D _texture;
 	IRandom[] _randoms;
@@ -33,7 +31,6 @@ public class RandomComparison : MonoBehaviour
 	enum TestType
 	{
 		Fill,
-		Collision,
 		Gorilla
 	}
 
@@ -56,29 +53,16 @@ public class RandomComparison : MonoBehaviour
 		TestUnityRandomFromOtherThread();
 #endif
 
-#if true // 速度計測
+#if false // 速度計測
 		Benchmark();
 #endif
 
-		_collisionTestDiffScale = 100f;
 		_texture = new Texture2D(Width, Height, TextureFormat.RGBA32, false);
 		_image.texture = _texture;
 		_image.rectTransform.sizeDelta = new Vector2(Width, Height);
 		_pixels = new Color32[ThreadCount][];
 		_testType = TestType.Fill;
 		_testTypeText.text = _testType.ToString();
-		_boxes = new bool[5][,];
-		_boxes[0] = new bool[1, 1 << 16];
-		_boxes[1] = new bool[2, 1 << 8];
-		_boxes[2] = new bool[4, 1 << 4];
-		_boxes[3] = new bool[8, 1 << 2];
-		_boxes[4] = new bool[16, 1 << 1];
-		_counts = new double[5][];
-		_counts[0] = new double[1];
-		_counts[1] = new double[2];
-		_counts[2] = new double[4];
-		_counts[3] = new double[8];
-		_counts[4] = new double[16];
 		SetRandomType(RandomType.XorShift32);
 		for (int i = 0; i < ThreadCount; i++)
 		{
@@ -205,94 +189,6 @@ public class RandomComparison : MonoBehaviour
 		_texture.Apply();
 	}
 
-	void CollisionTest()
-	{
-		int yStart = 0;
-		int testCount = _boxes.Length;
-		int yCount = Height / testCount;
-		_collisionTestFrameCount++;
-		for (int testIndex = 0; testIndex < testCount; testIndex++)
-		{
-			var boxes = _boxes[testIndex];
-			// ボールを投げて入った箱をtrueにする
-			int boxCount = boxes.GetLength(1);
-			int throwCount = boxCount;
-			int bitsCount = boxes.GetLength(0);
-			int shift = 16 >> testIndex;
-			int mask = (1 << shift) - 1;
-			// 理想値を計算
-			double ideal = 1 - System.Math.Pow((double)(boxCount - 1) / (double)boxCount, (double)boxCount);
-//Debug.Log("Test: " + testIndex + " " + boxCount + " " + throwCount + " " + bitsCount + " " + shift + " " + mask + " " + ideal);
-			int maxIteration = (1 << 16) / boxCount / bitsCount;
-			for (int iteration = 0; iteration < maxIteration; iteration++)
-			{
-				// クリア
-				for (int bitsIndex = 0; bitsIndex < boxes.GetLength(0); bitsIndex++)
-				{
-					for (int boxIndex = 0; boxIndex < boxes.GetLength(1); boxIndex++)
-					{
-						boxes[bitsIndex, boxIndex] = false;
-					}
-				}
-				for (int throwIndex = 0; throwIndex < throwCount; throwIndex++)
-				{
-					int randValue = _randoms[0].Next(); // 0番だけ使う
-					int bitsOffset = 0;
-					for (int bitsIndex = 0; bitsIndex < bitsCount; bitsIndex++)
-					{
-						var boxIndex = (randValue >> bitsOffset) & mask;
-						boxes[bitsIndex, boxIndex] = true;
-						bitsOffset += shift;
-					}
-				}
-				// trueになってる箱の数を数える
-				for (int bitsIndex = 0; bitsIndex < bitsCount; bitsIndex++)
-				{
-					for (int boxIndex = 0; boxIndex < boxCount; boxIndex++)
-					{
-						if (boxes[bitsIndex, boxIndex])
-						{
-							_counts[testIndex][bitsIndex] += 1.0;
-						}
-					}
-				}
-			}
-			// ピクセルの色に変換
-			int xStart = 0;
-			int xCount = Width / bitsCount;
-			for (int bitsIndex = 0; bitsIndex < bitsCount; bitsIndex++)
-			{
-				var count = _counts[testIndex][bitsIndex];
-				var averageCount = (double)count / (double)_collisionTestFrameCount / (double)maxIteration;
-				var average = averageCount / (double)boxCount;
-				var ratio = average / ideal;
-				Color color = new Color(0.5f, 0.5f, 0.5f, 1f);
-				if (ratio > 1.0)
-				{
-					color.r += (float)(ratio - 1.0) * _collisionTestDiffScale;
-				}
-				else if (ratio < 1.0)
-				{
-					color.g += (float)(1.0 - ratio) * _collisionTestDiffScale;
-				}
-				else // doubleの精度でピッタリってちょっと胡散くさいよね?真っ白にして識別する
-				{
-					color = new Color(1f, 1f, 1f, 1f);
-				}
-				for (int x = 0; x < xCount; x++)
-				{
-					for (int y = 0; y < yCount; y++)
-					{
-						_texture.SetPixel(xStart + x, yStart + y, color);
-					}
-				}
-				xStart += xCount;
-			}
-			yStart += yCount;
-		}
-		_texture.Apply();
-	}
-
 	void Fill(int index)
 	{
 		var pixels = _pixels[index];
@@ -321,14 +217,6 @@ public class RandomComparison : MonoBehaviour
 				_pixels[i][j] = new Color32(0, 0, 0, 0xff);
 			}
 		}
-		for (int i = 0; i < _counts.Length; i++)
-		{
-			for (int j = 0; j < _counts[i].Length; j++)
-			{
-				_counts[i][j] = 0.0;
-			}
-		}
-		_collisionTestFrameCount = 0;
 		CopyToTexture();
 	}
 
@@ -381,8 +269,7 @@ public class RandomComparison : MonoBehaviour
 		// タイプ変更
 		switch (_testType)
 		{
-			case TestType.Fill: _testType = TestType.Collision; break;
-			case TestType.Collision: _testType = TestType.Gorilla; break;
+			case TestType.Fill: _testType = TestType.Gorilla; break;
 			case TestType.Gorilla: _testType = TestType.Fill; break;
 		}
 		_testTypeText.text = _testType.ToString();
@@ -407,10 +294,6 @@ public class RandomComparison : MonoBehaviour
 			_threadPool.Wait();
 			// ピクセル充填
 			CopyToTexture();
-		}
-		else if (_testType == TestType.Collision)
-		{
-			CollisionTest();
 		}
 	}
 
